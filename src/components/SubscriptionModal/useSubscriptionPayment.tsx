@@ -268,11 +268,17 @@ export const useSubscriptionPayment = (plan: SubscriptionPlan | null, onSuccess:
   // عملية الدفع عبر Telegram Stars
   const handleStarsPayment = async () => {
     if (!plan) return
+    // تحقق من وجود قيمة رقمية صحيحة
+    if (typeof plan.selectedOption.telegramStarsPrice !== 'number') {
+      showToast.error('سعر النجوم غير متوفر أو غير صالح');
+      setPaymentStatus('failed');
+      return;
+    }
     try {
       setLoading(true)
       const { paymentToken } = await handleTelegramStarsPayment(
         plan.selectedOption.id,
-        plan.selectedOption.telegramStarsPrice
+        plan.selectedOption.telegramStarsPrice // الآن مضمون أنها number
       )
 
       if (paymentToken) {
@@ -286,7 +292,6 @@ export const useSubscriptionPayment = (plan: SubscriptionPlan | null, onSuccess:
       setLoading(false)
     }
   }
-
   // التأكد من صحة حالة الدفع
   useEffect(() => {
     if (!exchangeDetails && paymentStatus === 'processing') {

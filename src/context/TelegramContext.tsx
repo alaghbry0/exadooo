@@ -1,4 +1,3 @@
-// TelegramContext.tsx
 'use client';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useUserStore } from "../stores/zustand/userStore";
@@ -17,133 +16,115 @@ const TelegramContext = createContext<TelegramContextType>({
   telegramId: null,
 });
 
+// إضافة ثوابت للوضع التجريبي
+const TEST_MODE = true; // تفعيل الوضع التجريبي في التطوير فقط
+const TEST_TELEGRAM_ID = "7382197778";
+
 export const TelegramProvider = ({ children }: { children: React.ReactNode }) => {
   const { setUserData, telegramId: contextTelegramId } = useUserStore();
-  const [isTelegramReady, setIsTelegramReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // يبدأ التحميل افتراضيًا
-  const [isTelegramApp, setIsTelegramApp] = useState(false);
 
+  const [isTelegramReady, setIsTelegramReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isTelegramApp, setIsTelegramApp] = useState(false);
   const isTelegramAppRef = useRef(false);
   const retryTimeoutRef = useRef<number | null>(null);
   const fetchTelegramUserDataRef = useRef<() => void>(() => {});
 
+  // ✅ مسح الـ timeout عند الحاجة
   const clearRetryTimeout = useCallback(() => {
     if (retryTimeoutRef.current) {
-      console.log("🧹 Clearing pending retry timeout...");
+      console.log("Clearing retry timeout...");
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
   }, []);
 
+  // ✅ آلية إعادة المحاولة
   const retryInitDataFetch = useCallback(() => {
-    clearRetryTimeout();
-    console.log("⏳ Scheduling retry fetch for initDataUnsafe in 1 second...");
+    console.log("Retrying fetch in 1 second...");
     retryTimeoutRef.current = window.setTimeout(() => {
-      console.log("🔄 Executing scheduled retry fetch for initDataUnsafe...");
       fetchTelegramUserDataRef.current();
     }, 1000);
-  }, [clearRetryTimeout]);
+  }, []);
 
+  // ✅ جلب بيانات المستخدم من Telegram
   const fetchTelegramUserData = useCallback(() => {
-    console.log("🚀 Attempting to fetch Telegram User Data...");
+    console.log("Fetching Telegram User Data...");
 
-    if (!isTelegramAppRef.current) {
-      console.log("🚫 Not running inside Telegram WebApp (checked in fetch). Setting loading to false.");
+    if (TEST_MODE) {
+      console.log("🔥 TEST MODE ACTIVATED - Using predefined user data");
+      const userData = {
+        telegramId: TEST_TELEGRAM_ID,
+        telegramUsername: "test_user",
+        fullName: "Test User",
+        photoUrl: null,
+        joinDate: null,
+      };
+
+      setUserData(userData);
+      setIsTelegramReady(true);
       setIsLoading(false);
-      clearRetryTimeout();
       return;
     }
 
-    const tg = window.Telegram?.WebApp;
-    console.log("🔍 Telegram WebApp instance:", tg);
+    console.log("isTelegramAppRef.current:", isTelegramAppRef.current);
 
+    const tg = window.Telegram?.WebApp;
     if (!tg) {
-      // هذه الحالة يجب ألا تحدث إذا كان isTelegramAppRef.current صحيحًا,
-      // ولكن كتحقق إضافي.
-      console.warn("⚠️ Telegram WebApp SDK (window.Telegram.WebApp) not found unexpectedly. Setting loading to false.");
-      setIsLoading(false);
-      clearRetryTimeout();
+      console.log("Telegram WebApp not available");
+      retryInitDataFetch();
       return;
     }
 
     tg.ready();
     tg.expand();
 
-    console.log("🔐 Checking tg.initDataUnsafe for user data...");
-    if (tg.initDataUnsafe?.user?.id) {
+    if (tg?.initDataUnsafe?.user) {
       const user = tg.initDataUnsafe.user;
       const userData = {
-        telegramId: user.id.toString(),
+        telegramId: user.id?.toString() || null,
         telegramUsername: user.username || null,
         fullName: `${user.first_name || ""} ${user.last_name || ""}`.trim() || null,
         photoUrl: user.photo_url || null,
         joinDate: null,
       };
-      console.log("✅ Telegram User Data Fetched Successfully:", userData);
+
+      console.log("✅ Telegram User Data Fetched:", userData);
+
       setUserData(userData);
       setIsTelegramReady(true);
       setIsLoading(false);
       clearRetryTimeout();
+      return;
     } else {
-      console.warn("⏳ Telegram initDataUnsafe.user or user.id is missing. Scheduling retry for initDataUnsafe.");
-      console.log("ℹ️ Current initDataUnsafe:", JSON.stringify(tg.initDataUnsafe));
-      retryInitDataFetch();
+      console.log("Telegram initDataUnsafe is missing user data.");
     }
-  }, [setUserData, clearRetryTimeout, retryInitDataFetch]);
 
+    retryInitDataFetch();
+  }, [setUserData, clearRetryTimeout, retryInitDataFetch, setIsLoading, setIsTelegramReady]);
+
+  // ✅ تحديث المرجع ليشير إلى الدالة الصحيحة
   useEffect(() => {
     fetchTelegramUserDataRef.current = fetchTelegramUserData;
   }, [fetchTelegramUserData]);
 
-  // --- ⭐ تعديل جوهري هنا: محاولة الكشف عن بيئة تليجرام بشكل متكرر ---
+  // ✅ تنفيذ عند تحميل المكون
   useEffect(() => {
-    console.log("🚀 TelegramProvider mounted. Starting Telegram environment detection...");
+    setTimeout(() => {
+      const isClientSideTelegramApp = typeof window !== 'undefined' && !!window.Telegram?.WebApp;
+      setIsTelegramApp(isClientSideTelegramApp);
+      isTelegramAppRef.current = isClientSideTelegramApp;
 
-    // إذا كنا في بيئة الخادم، فلا نفعل شيئًا
-    if (typeof window === 'undefined') {
-      console.log("🚫 Running on server, skipping Telegram SDK detection.");
-      setIsLoading(false); // ليس هناك تحميل لبيانات تيليجرام
-      setIsTelegramApp(false);
-      return;
-    }
+      console.log("Detected Telegram WebApp:", isClientSideTelegramApp);
 
-    const MAX_DETECTION_ATTEMPTS = 8; // محاولة 5 مرات
-    const DETECTION_INTERVAL = 300; // كل 300 مللي ثانية
-    let detectionAttempts = 0;
-
-    const detectTelegramEnv = () => {
-      const tgWebApp = window.Telegram?.WebApp;
-      if (tgWebApp) {
-        console.log("✅ Telegram WebApp SDK found!");
-        setIsTelegramApp(true);
-        isTelegramAppRef.current = true;
-        // الآن بعد أن وجدنا بيئة تليجرام، نبدأ في جلب بيانات المستخدم
-        fetchTelegramUserDataRef.current();
-      } else {
-        detectionAttempts++;
-        if (detectionAttempts < MAX_DETECTION_ATTEMPTS) {
-          console.warn(`⚠️ Telegram WebApp SDK not found (attempt ${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}). Retrying in ${DETECTION_INTERVAL}ms...`);
-          retryTimeoutRef.current = window.setTimeout(detectTelegramEnv, DETECTION_INTERVAL);
-        } else {
-          console.error(`❌ Telegram WebApp SDK not found after ${MAX_DETECTION_ATTEMPTS} attempts. Assuming not in Telegram environment.`);
-          setIsTelegramApp(false);
-          isTelegramAppRef.current = false;
-          setIsLoading(false); // توقف عن التحميل، لأننا قررنا أننا لسنا في تليجرام
-        }
-      }
-    };
-
-    detectTelegramEnv(); // ابدأ المحاولة الأولى للكشف
+      fetchTelegramUserData();
+    }, 200);
 
     return () => {
-      console.log("🧹 TelegramProvider unmounted. Clearing any pending detection/retry timeout.");
-      clearRetryTimeout(); // هذا سيمسح مؤقت الكشف أو مؤقت جلب البيانات
+      console.log("Component unmounted, clearing retry timeout...");
+      clearRetryTimeout();
     };
-  // clearRetryTimeout مستقر، fetchTelegramUserDataRef يتم تحديثه بشكل منفصل
-  // لذا، هذا الـ effect سيعمل مرة واحدة عند التحميل والتنظيف عند الإزالة
-  }, [clearRetryTimeout]);
-  // --- نهاية التعديل الجوهري ---
-
+  }, [fetchTelegramUserData, clearRetryTimeout]);
 
   const value: TelegramContextType = {
     isTelegramReady,
@@ -166,3 +147,4 @@ export const useTelegram = () => {
   }
   return context;
 };
+

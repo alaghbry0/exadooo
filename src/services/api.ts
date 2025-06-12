@@ -1,5 +1,72 @@
 // services/api.js
 
+
+// --- تعريف الأنواع التي ستأتي من نقطة النهاية الجديدة ---
+export interface ApiPublicPlan {
+  id: number;
+  subscription_type_id: number;
+  name: string;
+  price: number | string; // السعر يمكن أن يكون رقمًا أو نصًا مثل "99.00"
+  original_price?: number | string | null;
+  telegram_stars_price?: number | null;
+  duration_days: number;
+}
+
+export interface ApiPublicSubscriptionType {
+  id: number;
+  name: string;
+  channel_id?: number | null;
+  group_id: number | null;
+  sort_order?: number;
+  description?: string | null;
+  image_url?: string | null;
+  features: string[]; // تأكد أن الخادم يرسلها كمصفوفة Strings
+  usp?: string | null;
+  is_recommended?: boolean;
+  terms_and_conditions: string[]; // تأكد أن الخادم يرسلها كمصفوفة Strings
+  created_at?: string;
+  subscription_options: ApiPublicPlan[]; // اسم الحقل كما هو مرسل من الخادم
+}
+
+export interface ApiPublicSubscriptionGroup {
+  id: number | null; // يمكن أن يكون null للأنواع غير المجمعة
+  name: string;
+  description?: string | null;
+  image_url?: string | null;
+  color?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  display_as_single_card: boolean;
+  subscription_types: ApiPublicSubscriptionType[];
+}
+
+// دالة جديدة لجلب كل بيانات الاشتراكات العامة
+export const getAllPublicSubscriptionData = async (): Promise<ApiPublicSubscriptionGroup[]> => {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/public/all-subscription-data`);
+    if (!response.ok) {
+      let errorMessage = `Error ${response.status}: Failed to fetch all subscription data.`;
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage += ` ${errorData.error}`;
+        }
+      } catch { /* ignore parse error if response is not json */ }
+      throw new Error(errorMessage);
+    }
+    const data = await response.json();
+    return data as ApiPublicSubscriptionGroup[];
+  } catch (error) {
+    console.error("getAllPublicSubscriptionData failed:", error);
+    // يمكنك إعادة رمي الخطأ أو معالجته بشكل مختلف هنا
+    if (error instanceof Error) {
+        throw new Error(`Network or parsing error in getAllPublicSubscriptionData: ${error.message}`);
+    }
+    throw new Error('An unknown error occurred in getAllPublicSubscriptionData');
+  }
+};
+
+
 export const getSubscriptionGroups = async () => {
     try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/public/subscription-groups`);
